@@ -97,38 +97,62 @@ GREETING → INTRODUCE_WORD → REPEAT_WORD → EXERCISE → FEEDBACK
 
 **`REVIEW`** перед farewell — це базовий педагогічний принцип (spaced repetition). Дитина бачить всі слова разом, що закріплює зв'язки.
 
-### Приклад діалогу
+### Приклад діалогу (реальний вивід CLI)
 
 ```
-🦊 Charlie: Hi! I'm Charlie the fox! Ready to learn some words?
-👦 Дитина:  Yes!                                              [GREETING → INTRODUCE_WORD]
+🦊 Charlie: Hi! I'm Charlie the fox! I live in a treehouse
+            in London. Want to learn new words with me?
+👦 Дитина:  так                                               [GREETING → INTRODUCE_WORD]
 
-🦊 Charlie: Meet FROG — a little green animal that jumps!
-👦 Дитина:  Cool!                                             [INTRODUCE_WORD → REPEAT_WORD]
+🦊 Charlie: Oh, that means 'yes' in English! I saw a frog
+            near my treehouse! It goes Ribbit! Have you seen one?
+👦 Дитина:  yes i do                                          [INTRODUCE_WORD → REPEAT_WORD]
 
-🦊 Charlie: Can you say FROG? Let me hear you!
-👦 Дитина:  Frog!                                             [REPEAT_WORD → EXERCISE]
+🦊 Charlie: Yay! You said yes! Listen: FROG!
+            Now you try — say FROG!
+👦 Дитина:  frog                                              [REPEAT_WORD → EXERCISE]
 
-🦊 Charlie: Nice! What color is a frog?
-👦 Дитина:  I like pizza                                      [OFF_TOPIC — залишаємось]
+🦊 Charlie: You said FROG! Now, what color is a frog?
+            Can you guess?
+👦 Дитина:  green                                             [CORRECT → FEEDBACK → INTRODUCE_WORD]
 
-🦊 Charlie: Pizza is yummy! But what color is a frog?
-👦 Дитина:  Green!                                            [CORRECT → FEEDBACK → INTRODUCE_WORD]
+🦊 Charlie: Wow, so smart! Green is right! I saw a fish
+            in the pond, it goes Splash! Have you seen one?
+👦 Дитина:  yes                                               [INTRODUCE_WORD → REPEAT_WORD]
 
-🦊 Charlie: Yay! Now meet FISH — it lives in water!
-👦 Дитина:  Ok                                                [INTRODUCE_WORD → REPEAT_WORD]
+🦊 Charlie: You said yes! Yay! Listen: FISH!
+            Now you try — say FISH!
+👦 Дитина:  fish                                              [REPEAT_WORD → EXERCISE]
 
-🦊 Charlie: Your turn — say FISH!
-👦 Дитина:  Fish!                                             [REPEAT_WORD → EXERCISE]
+🦊 Charlie: Yay, you said fish! Does a fish live
+            in water or a tree?
+👦 Дитина:  in water                                          [CORRECT → FEEDBACK → INTRODUCE_WORD]
 
-🦊 Charlie: Does a fish live in water or in a tree?
-👦 Дитина:  Water!                                            [CORRECT → FEEDBACK → REVIEW]
+🦊 Charlie: You're right, fish live in water! I saw a cat
+            in Hyde Park, it said Meow! Do you like cats?
+👦 Дитина:  yes, cats are funny                               [INTRODUCE_WORD → REPEAT_WORD]
 
-🦊 Charlie: Frog! Fish! You know them all! Say them with me!
-👦 Дитина:  Frog! Fish!                                       [REVIEW → FAREWELL → COMPLETED]
+🦊 Charlie: Hehe, cats are funny! Listen: CAT!
+            Now you try — say CAT!
+👦 Дитина:  Cat                                               [REPEAT_WORD → EXERCISE]
 
-🦊 Charlie: Amazing! You were a star today! See you next time!
+🦊 Charlie: Yay, you said Cat! What sound does a cat make?
+            Can you make it?
+👦 Дитина:  miao                                              [CORRECT → FEEDBACK → REVIEW]
+
+🦊 Charlie: You said Miao! So smart!
+            Cat, Fish, Frog - say with me!
+👦 Дитина:  Cat, Fish, Frog                                   [REVIEW → FAREWELL → COMPLETED]
+
+🦊 Charlie: Bye! You're amazing! Can't wait to play again!
 ```
+
+Зверніть увагу:
+- Дитина починає **українською** ("так") — Charlie розуміє і реагує англійською
+- Кожна відповідь дитини **визнається** перед переходом до наступного кроку
+- Introduce побудований як **міні-історія** ("I saw a frog near my treehouse!")
+- Charlie **реагує на контент** відповіді ("cats are funny" → "Hehe, cats are funny!")
+- Неточна вимова ("miao" замість "meow") — зараховується як правильна (generous evaluation)
 
 ---
 
