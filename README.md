@@ -55,7 +55,7 @@ docker compose up --build
 GROQ_API_KEY=test-key pytest -v
 ```
 
-Всі 31 тест працюють без реального API-ключа — LLM замінюється на mock через протоколи.
+Всі 35 тестів працюють без реального API-ключа — LLM замінюється на mock через протоколи.
 
 ---
 
@@ -68,47 +68,66 @@ GROQ_API_KEY=test-key pytest -v
 ### Стани
 
 ```
-GREETING ──→ INTRODUCE_WORD ──→ EXERCISE ──→ FEEDBACK ──→ INTRODUCE_WORD (наступне слово)
-   │              │                  │           │
-   │         чекає реакції      чекає відповідь   │
-   │           дитини             дитини      auto-transition
-   │                                               │
-  чекає                                     якщо слова скінчились:
-  відповідь                                        │
-  дитини                                      FAREWELL ──→ COMPLETED
+GREETING → INTRODUCE_WORD → REPEAT_WORD → EXERCISE → FEEDBACK
+                                                         │
+                                              ┌──────────┤
+                                         has_next    last_word
+                                              │          │
+                                        INTRODUCE     REVIEW → FAREWELL → COMPLETED
+                                        (next word)
 ```
 
 **Стани, що чекають input дитини** (перехід тільки після повідомлення):
 - `GREETING` — Charlie вітається, дитина відповідає
 - `INTRODUCE_WORD` — Charlie представляє нове слово, дитина реагує
-- `EXERCISE` — Charlie ставить питання, дитина відповідає
+- `REPEAT_WORD` — Charlie просить повторити/вимовити слово. *Плейсхолдер для pronunciation scoring через STT* — зараз приймає будь-яку спробу і переходить далі
+- `EXERCISE` — Charlie ставить питання про слово, дитина відповідає
+- `REVIEW` — Швидкий повтор всіх вивчених слів перед прощанням. Педагогічне закріплення
 
 **Auto-transition стани** (переходять автоматично, без очікування):
-- `FEEDBACK` → переходить до `INTRODUCE_WORD` наступного слова або `FAREWELL`
+- `FEEDBACK` → `INTRODUCE_WORD` (наступне слово) або `REVIEW` (останнє слово)
 - `FAREWELL` → `COMPLETED`
+
+### Чому саме така структура
+
+**`REPEAT_WORD`** існує як окремий стан, а не частина exercise, тому що:
+- В реальному продукті з STT тут буде **pronunciation scoring** — окремий pipeline від класифікації відповідей
+- Repeat завжди lenient (приймаємо будь-яку спробу) — на відміну від exercise, де є правильна відповідь
+- Це дозволяє підключити STT-scoring без зміни решти flow
+
+**`REVIEW`** перед farewell — це базовий педагогічний принцип (spaced repetition). Дитина бачить всі слова разом, що закріплює зв'язки.
 
 ### Приклад діалогу
 
 ```
 🦊 Charlie: Hi! I'm Charlie the fox! Ready to learn some words?
-👦 Дитина:  Yes!                                                   [GREETING → INTRODUCE_WORD]
+👦 Дитина:  Yes!                                              [GREETING → INTRODUCE_WORD]
 
-🦊 Charlie: Awesome! Meet FROG — a little green animal that jumps!
-👦 Дитина:  Cool!                                                  [INTRODUCE_WORD → EXERCISE]
+🦊 Charlie: Meet FROG — a little green animal that jumps!
+👦 Дитина:  Cool!                                             [INTRODUCE_WORD → REPEAT_WORD]
 
-🦊 Charlie: What color is a frog?
-👦 Дитина:  I like pizza                                           [OFF_TOPIC — залишаємось]
+🦊 Charlie: Can you say FROG? Let me hear you!
+👦 Дитина:  Frog!                                             [REPEAT_WORD → EXERCISE]
+
+🦊 Charlie: Nice! What color is a frog?
+👦 Дитина:  I like pizza                                      [OFF_TOPIC — залишаємось]
 
 🦊 Charlie: Pizza is yummy! But what color is a frog?
-👦 Дитина:  Green!                                                 [CORRECT → FEEDBACK → INTRODUCE_WORD]
+👦 Дитина:  Green!                                            [CORRECT → FEEDBACK → INTRODUCE_WORD]
 
-🦊 Charlie: Yes! Now meet FISH — it lives in water and can swim!
-👦 Дитина:  Ok                                                     [INTRODUCE_WORD → EXERCISE]
+🦊 Charlie: Yay! Now meet FISH — it lives in water!
+👦 Дитина:  Ok                                                [INTRODUCE_WORD → REPEAT_WORD]
+
+🦊 Charlie: Your turn — say FISH!
+👦 Дитина:  Fish!                                             [REPEAT_WORD → EXERCISE]
 
 🦊 Charlie: Does a fish live in water or in a tree?
-👦 Дитина:  Water!                                                 [CORRECT → FEEDBACK → FAREWELL]
+👦 Дитина:  Water!                                            [CORRECT → FEEDBACK → REVIEW]
 
-🦊 Charlie: Amazing! You learned frog and fish! See you next time!
+🦊 Charlie: Frog! Fish! You know them all! Say them with me!
+👦 Дитина:  Frog! Fish!                                       [REVIEW → FAREWELL → COMPLETED]
+
+🦊 Charlie: Amazing! You were a star today! See you next time!
 ```
 
 ---

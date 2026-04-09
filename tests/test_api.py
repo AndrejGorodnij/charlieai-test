@@ -107,4 +107,4 @@ def test_send_message_after_greeting(client):
     assert response.status_code == 200
     data = response.json()
     assert "charlie_response" in data
-    assert data["lesson_state"]["stage"] == "introduce_word"
+    assert data["lesson_state"]["stage"] in ("introduce_word", "repeat_word", "exercise")

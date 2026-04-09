@@ -10,7 +10,20 @@ MAX_ATTEMPTS = 3
 
 
 class StateMachine:
-    """Pure deterministic state machine. No I/O, no side effects."""
+    """Pure deterministic state machine. No I/O, no side effects.
+
+    Lesson flow:
+        GREETING → INTRODUCE_WORD → REPEAT_WORD → EXERCISE → FEEDBACK
+                                                                 │
+                                                      ┌─────────┤
+                                                 has_next    last_word
+                                                      │         │
+                                                INTRODUCE    REVIEW → FAREWELL → COMPLETED
+                                                (next word)
+
+    Child-input stages (wait for message): GREETING, INTRODUCE_WORD, REPEAT_WORD, EXERCISE, REVIEW
+    Auto-transition stages (advance immediately): FEEDBACK, FAREWELL
+    """
 
     def transition(self, state: LessonState, intent: ChildIntent) -> LessonState:
         """Apply a child intent event to the current state and return the updated state."""
@@ -29,13 +42,41 @@ class StateMachine:
             state = new_state
         return state
 
-    # --- Handlers for child-input states ---
+    # --- Handlers for child-input stages ---
 
     def _handle_greeting(self, state: LessonState, intent: ChildIntent) -> LessonState:
         return state.model_copy(
             update={
                 "stage": LessonStage.INTRODUCE_WORD,
                 "current_word_index": 0,
+            }
+        )
+
+    def _handle_introduce_word(
+        self, state: LessonState, intent: ChildIntent
+    ) -> LessonState:
+        """Child reacted to word introduction → ask them to repeat the word."""
+        return state.model_copy(update={"stage": LessonStage.REPEAT_WORD})
+
+    def _handle_repeat_word(
+        self, state: LessonState, intent: ChildIntent
+    ) -> LessonState:
+        """Child tried to repeat the word → move to exercise.
+
+        REPEAT_WORD is intentionally lenient — we always advance to EXERCISE
+        regardless of correctness. In a real product with STT, this is where
+        pronunciation scoring would happen. For now, Charlie encourages and moves on.
+        """
+        word = state.current_word
+        if word is None:
+            return state.model_copy(update={"stage": LessonStage.FAREWELL})
+
+        exercise = get_exercise(word)
+        return state.model_copy(
+            update={
+                "stage": LessonStage.EXERCISE,
+                "exercise_type": exercise.exercise_type,
+                "attempts": 0,
             }
         )
 
@@ -61,24 +102,9 @@ class StateMachine:
 
         return state.model_copy(update={"attempts": new_attempts})
 
-    # --- Handler for INTRODUCE_WORD (waits for child input) ---
-
-    def _handle_introduce_word(
-        self, state: LessonState, intent: ChildIntent
-    ) -> LessonState:
-        """Child reacted to word introduction → move to exercise."""
-        word = state.current_word
-        if word is None:
-            return state.model_copy(update={"stage": LessonStage.FAREWELL})
-
-        exercise = get_exercise(word)
-        return state.model_copy(
-            update={
-                "stage": LessonStage.EXERCISE,
-                "exercise_type": exercise.exercise_type,
-                "attempts": 0,
-            }
-        )
+    def _handle_review(self, state: LessonState, intent: ChildIntent) -> LessonState:
+        """Child responded to review → farewell."""
+        return state.model_copy(update={"stage": LessonStage.FAREWELL})
 
     # --- Handlers for auto-transition states ---
 
@@ -99,9 +125,10 @@ class StateMachine:
                 }
             )
 
+        # Last word → go to review instead of directly to farewell
         return state.model_copy(
             update={
-                "stage": LessonStage.FAREWELL,
+                "stage": LessonStage.REVIEW,
                 "completed_words": completed,
             }
         )
@@ -114,7 +141,9 @@ class StateMachine:
     _handlers = {
         LessonStage.GREETING: _handle_greeting,
         LessonStage.INTRODUCE_WORD: _handle_introduce_word,
+        LessonStage.REPEAT_WORD: _handle_repeat_word,
         LessonStage.EXERCISE: _handle_exercise,
+        LessonStage.REVIEW: _handle_review,
     }
 
     _auto_stages = {

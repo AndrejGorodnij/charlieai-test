@@ -37,6 +37,16 @@ def introduce_state():
 
 
 @pytest.fixture
+def repeat_state():
+    return LessonState(
+        session_id="test-1",
+        words=["cat", "dog", "bird"],
+        stage=LessonStage.REPEAT_WORD,
+        current_word_index=0,
+    )
+
+
+@pytest.fixture
 def exercise_state():
     return LessonState(
         session_id="test-1",
@@ -56,16 +66,21 @@ class TestGreetingTransitions:
 
 
 class TestIntroduceWordTransitions:
-    def test_child_reply_moves_to_exercise(self, sm, introduce_state):
+    def test_child_reply_moves_to_repeat_word(self, sm, introduce_state):
         new_state = sm.transition(introduce_state, ChildIntent.CHILD_REPLIED)
+        assert new_state.stage == LessonStage.REPEAT_WORD
+
+
+class TestRepeatWordTransitions:
+    def test_child_reply_moves_to_exercise(self, sm, repeat_state):
+        new_state = sm.transition(repeat_state, ChildIntent.CHILD_REPLIED)
         assert new_state.stage == LessonStage.EXERCISE
         assert new_state.exercise_type is not None
         assert new_state.attempts == 0
 
-    def test_exercise_type_matches_word(self, sm, introduce_state):
-        new_state = sm.transition(introduce_state, ChildIntent.CHILD_REPLIED)
-        # "cat" exercise is QUESTION type
-        assert new_state.exercise_type == ExerciseType.QUESTION
+    def test_exercise_type_matches_word(self, sm, repeat_state):
+        new_state = sm.transition(repeat_state, ChildIntent.CHILD_REPLIED)
+        assert new_state.exercise_type == ExerciseType.QUESTION  # "cat" → QUESTION
 
 
 class TestExerciseTransitions:
@@ -111,12 +126,11 @@ class TestAutoTransitions:
             feedback_type=FeedbackType.POSITIVE,
         )
         new_state = sm.apply_auto_transitions(state)
-        # FEEDBACK → INTRODUCE_WORD (stops here — waits for child input)
         assert new_state.stage == LessonStage.INTRODUCE_WORD
         assert new_state.current_word_index == 1
         assert "cat" in new_state.completed_words
 
-    def test_feedback_last_word_moves_to_completed(self, sm):
+    def test_feedback_last_word_moves_to_review(self, sm):
         state = LessonState(
             session_id="test-1",
             words=["cat"],
@@ -125,15 +139,28 @@ class TestAutoTransitions:
             feedback_type=FeedbackType.POSITIVE,
         )
         new_state = sm.apply_auto_transitions(state)
-        # FEEDBACK → FAREWELL → COMPLETED
-        assert new_state.stage == LessonStage.COMPLETED
-        assert new_state.is_finished
+        assert new_state.stage == LessonStage.REVIEW
         assert "cat" in new_state.completed_words
+
+    def test_review_then_farewell(self, sm):
+        """REVIEW waits for child input, then transitions to FAREWELL."""
+        state = LessonState(
+            session_id="test-1",
+            words=["cat"],
+            stage=LessonStage.REVIEW,
+            completed_words=["cat"],
+        )
+        new_state = sm.transition(state, ChildIntent.CHILD_REPLIED)
+        assert new_state.stage == LessonStage.FAREWELL
+
+        # FAREWELL auto-transitions to COMPLETED
+        new_state = sm.apply_auto_transitions(new_state)
+        assert new_state.stage == LessonStage.COMPLETED
 
 
 class TestFullLessonFlow:
     def test_complete_lesson_all_correct(self, sm):
-        """Simulate a full lesson with all correct answers."""
+        """Full lesson: greeting → introduce → repeat → exercise → feedback → review → farewell."""
         state = LessonState(
             session_id="test-1",
             words=["cat", "dog"],
@@ -144,35 +171,41 @@ class TestFullLessonFlow:
         state = sm.transition(state, ChildIntent.CHILD_REPLIED)
         assert state.stage == LessonStage.INTRODUCE_WORD
 
-        # Introduce → Exercise (child reacts)
+        # Introduce → Repeat
+        state = sm.transition(state, ChildIntent.CHILD_REPLIED)
+        assert state.stage == LessonStage.REPEAT_WORD
+
+        # Repeat → Exercise
         state = sm.transition(state, ChildIntent.CHILD_REPLIED)
         assert state.stage == LessonStage.EXERCISE
         assert state.current_word == "cat"
 
-        # Correct answer → Feedback
+        # Correct → Feedback → Introduce (dog)
         state = sm.transition(state, ChildIntent.CORRECT_ANSWER)
         assert state.stage == LessonStage.FEEDBACK
-
-        # Auto: Feedback → Introduce Word (dog)
         state = sm.apply_auto_transitions(state)
         assert state.stage == LessonStage.INTRODUCE_WORD
         assert state.current_word == "dog"
 
-        # Introduce → Exercise (child reacts)
+        # Introduce → Repeat → Exercise (dog)
+        state = sm.transition(state, ChildIntent.CHILD_REPLIED)
+        assert state.stage == LessonStage.REPEAT_WORD
         state = sm.transition(state, ChildIntent.CHILD_REPLIED)
         assert state.stage == LessonStage.EXERCISE
 
-        # Correct answer → Feedback
+        # Correct → Feedback → Review (last word)
         state = sm.transition(state, ChildIntent.CORRECT_ANSWER)
-        assert state.stage == LessonStage.FEEDBACK
-
-        # Auto: Feedback → Farewell → Completed
         state = sm.apply_auto_transitions(state)
-        assert state.stage == LessonStage.COMPLETED
+        assert state.stage == LessonStage.REVIEW
         assert state.completed_words == ["cat", "dog"]
 
+        # Review → Farewell → Completed
+        state = sm.transition(state, ChildIntent.CHILD_REPLIED)
+        state = sm.apply_auto_transitions(state)
+        assert state.stage == LessonStage.COMPLETED
+
     def test_lesson_with_failures(self, sm):
-        """Simulate a lesson where child fails max attempts on first word."""
+        """Child fails max attempts → give answer → review → farewell."""
         state = LessonState(
             session_id="test-1",
             words=["cat"],
@@ -182,17 +215,20 @@ class TestFullLessonFlow:
             attempts=0,
         )
 
-        # 3 wrong answers
         for i in range(MAX_ATTEMPTS - 1):
             state = sm.transition(state, ChildIntent.WRONG_ANSWER)
             assert state.stage == LessonStage.EXERCISE
             assert state.attempts == i + 1
 
-        # Final wrong answer → give answer feedback
+        # Final failure → give answer → review
         state = sm.transition(state, ChildIntent.WRONG_ANSWER)
         assert state.stage == LessonStage.FEEDBACK
         assert state.feedback_type == FeedbackType.GIVE_ANSWER
 
-        # Auto: Feedback → Farewell → Completed
+        state = sm.apply_auto_transitions(state)
+        assert state.stage == LessonStage.REVIEW
+
+        # Review → farewell → completed
+        state = sm.transition(state, ChildIntent.CHILD_REPLIED)
         state = sm.apply_auto_transitions(state)
         assert state.stage == LessonStage.COMPLETED

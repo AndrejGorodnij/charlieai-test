@@ -61,16 +61,9 @@ class LessonEngine:
 
         state.conversation_history.append(Message(role="child", text=child_text))
 
-        if state.stage == LessonStage.GREETING:
-            turn, state = self._handle_greeting(state)
-
-        elif state.stage == LessonStage.INTRODUCE_WORD:
-            turn, state = self._handle_introduce_word(state)
-
-        elif state.stage == LessonStage.EXERCISE:
-            intent = await self._llm.evaluate_intent(state, child_text)
-            turn, state = self._handle_exercise(state, child_text, intent)
-
+        handler = self._stage_handlers.get(state.stage)
+        if handler:
+            turn, state = await handler(self, state, child_text)
         else:
             turn = TurnContext(child_text=child_text)
             state = self._sm.apply_auto_transitions(state)
@@ -82,12 +75,11 @@ class LessonEngine:
 
     # --- Stage handlers ---
 
-    def _handle_greeting(
-        self, state: LessonState
+    async def _handle_greeting(
+        self, state: LessonState, child_text: str
     ) -> tuple[TurnContext, LessonState]:
         """Child replied to greeting → introduce first word."""
         state = self._sm.transition(state, ChildIntent.CHILD_REPLIED)
-        # Now in INTRODUCE_WORD — Charlie will present the word and wait
 
         turn = TurnContext(
             is_greeting_reply=True,
@@ -96,24 +88,41 @@ class LessonEngine:
         )
         return turn, state
 
-    def _handle_introduce_word(
-        self, state: LessonState
+    async def _handle_introduce_word(
+        self, state: LessonState, child_text: str
     ) -> tuple[TurnContext, LessonState]:
-        """Child reacted to word introduction → move to exercise."""
+        """Child reacted to word introduction → ask to repeat the word."""
+        word = state.current_word
+        state = self._sm.transition(state, ChildIntent.CHILD_REPLIED)
+
+        turn = TurnContext(repeat_word=word)
+        return turn, state
+
+    async def _handle_repeat_word(
+        self, state: LessonState, child_text: str
+    ) -> tuple[TurnContext, LessonState]:
+        """Child repeated the word → praise attempt, move to exercise.
+
+        In the future with STT, this is where pronunciation scoring plugs in.
+        For now we always accept the attempt and move to the exercise.
+        """
         word = state.current_word
         state = self._sm.transition(state, ChildIntent.CHILD_REPLIED)
         exercise = get_exercise(state.current_word) if state.current_word else None
 
         turn = TurnContext(
-            exercise_word=word,
+            child_text=child_text,
+            exercise_word=state.current_word,
             exercise=exercise,
         )
         return turn, state
 
-    def _handle_exercise(
-        self, state: LessonState, child_text: str, intent: ChildIntent
+    async def _handle_exercise(
+        self, state: LessonState, child_text: str
     ) -> tuple[TurnContext, LessonState]:
         """Handle child's answer to an exercise. May stay or cascade."""
+        intent = await self._llm.evaluate_intent(state, child_text)
+
         prev_word = state.current_word
         prev_exercise = get_exercise(prev_word) if prev_word else None
         prev_attempts = state.attempts
@@ -137,7 +146,7 @@ class LessonEngine:
         if feedback_type == FeedbackType.GIVE_ANSWER and prev_exercise:
             correct_answer = prev_exercise.accept_patterns[0]
 
-        # Auto-transitions: FEEDBACK → INTRODUCE_WORD (or FAREWELL → COMPLETED)
+        # Auto-transitions: FEEDBACK → INTRODUCE_WORD or REVIEW
         state = self._sm.apply_auto_transitions(state)
 
         turn = TurnContext(
@@ -150,10 +159,33 @@ class LessonEngine:
         )
 
         if state.stage == LessonStage.INTRODUCE_WORD:
-            # Feedback + introduce next word (child will respond before exercise)
             turn.introduce_word = state.current_word
-        elif state.stage in (LessonStage.FAREWELL, LessonStage.COMPLETED):
-            turn.is_farewell = True
-            turn.completed_words = list(state.completed_words)
+        elif state.stage == LessonStage.REVIEW:
+            turn.is_review = True
+            turn.review_words = list(state.completed_words)
 
         return turn, state
+
+    async def _handle_review(
+        self, state: LessonState, child_text: str
+    ) -> tuple[TurnContext, LessonState]:
+        """Child responded to review → farewell."""
+        state = self._sm.transition(state, ChildIntent.CHILD_REPLIED)
+        # FAREWELL → COMPLETED (auto)
+        state = self._sm.apply_auto_transitions(state)
+
+        turn = TurnContext(
+            is_farewell=True,
+            completed_words=list(state.completed_words),
+        )
+        return turn, state
+
+    # --- Dispatch table ---
+
+    _stage_handlers = {
+        LessonStage.GREETING: _handle_greeting,
+        LessonStage.INTRODUCE_WORD: _handle_introduce_word,
+        LessonStage.REPEAT_WORD: _handle_repeat_word,
+        LessonStage.EXERCISE: _handle_exercise,
+        LessonStage.REVIEW: _handle_review,
+    }

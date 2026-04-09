@@ -154,12 +154,32 @@ def build_turn_prompt(turn: TurnContext) -> str:
             f"Make it vivid and fun in one sentence."
         )
 
+    # --- Repeat word (pronunciation practice) ---
+    if turn.repeat_word:
+        parts.append(
+            f'Ask the child to say the word "{turn.repeat_word}" out loud. '
+            f'Make it fun — like a game: "Can you say {turn.repeat_word}? '
+            f'Let me hear you!" or "Your turn — say {turn.repeat_word}!"'
+        )
+
     # --- Ask new exercise ---
     if turn.exercise_word and turn.exercise:
         parts.append(
-            f'Now ask the child a question about "{turn.exercise_word}": '
+            f'Praise the child for saying the word (even if they didn\'t get it perfectly). '
+            f'Then ask a question about "{turn.exercise_word}": '
             f"{turn.exercise.prompt_hint}. "
             f"Ask it in a playful way, like a fun challenge between friends."
+        )
+
+    # --- Review (end-of-lesson recap) ---
+    if turn.is_review:
+        words = ", ".join(turn.review_words) if turn.review_words else "the words"
+        parts.append(
+            f"All words are done! Time for a quick review. "
+            f"The child learned: {words}. "
+            f"Say all the words together in a fun way — like a little chant or cheer. "
+            f'For example: "Cat! Dog! Bird! You know them all!" '
+            f"Ask the child to say them with you."
         )
 
     # --- Farewell ---

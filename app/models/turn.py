@@ -32,9 +32,16 @@ class TurnContext:
     # --- New word introduction ---
     introduce_word: str | None = None
 
+    # --- Repeat word (pronunciation practice) ---
+    repeat_word: str | None = None
+
     # --- New exercise to ask ---
     exercise_word: str | None = None
     exercise: ExerciseDefinition | None = None
+
+    # --- Review (end-of-lesson recap) ---
+    is_review: bool = False
+    review_words: list[str] = field(default_factory=list)
 
     # --- Farewell ---
     is_farewell: bool = False

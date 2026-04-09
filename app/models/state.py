@@ -7,8 +7,10 @@ from pydantic import BaseModel, Field
 class LessonStage(str, Enum):
     GREETING = "greeting"
     INTRODUCE_WORD = "introduce_word"
+    REPEAT_WORD = "repeat_word"
     EXERCISE = "exercise"
     FEEDBACK = "feedback"
+    REVIEW = "review"
     FAREWELL = "farewell"
     COMPLETED = "completed"
 
