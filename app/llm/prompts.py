@@ -74,8 +74,18 @@ def build_turn_prompt(turn: TurnContext) -> str:
     parts: list[str] = []
 
     # --- Context: what the child said ---
-    if turn.child_text:
+    if turn.child_text and turn.child_text.strip():
         parts.append(f'The child said: "{turn.child_text}"')
+        parts.append(
+            "IMPORTANT: Always acknowledge what the child said before moving on. "
+            "If they spoke Ukrainian, show you understood (e.g., \"Oh, that means ... in English!\"). "
+            "If they said something interesting, react to it briefly. Never ignore their words."
+        )
+    elif not turn.is_greeting_reply:
+        parts.append(
+            "The child didn't say anything. That's okay — they might be shy! "
+            "Gently encourage them and continue."
+        )
 
     # --- Greeting reply ---
     if turn.is_greeting_reply:
@@ -83,8 +93,11 @@ def build_turn_prompt(turn: TurnContext) -> str:
         if turn.child_name:
             parts.append(f'Their name is "{turn.child_name}".')
         parts.append(
-            "React happily to their reply. "
-            "Then introduce the first word — make it exciting, like you're showing them a surprise!"
+            "React warmly to what they said. "
+            "Then introduce the first word like a little story — "
+            "tell the child where you saw this animal or what it does. "
+            'Example: "Guess what I found near my treehouse? A FROG! '
+            'It\'s small, green, and jumps really high! Have you ever seen one?"'
         )
 
     # --- Feedback on exercise ---
@@ -108,19 +121,17 @@ def build_turn_prompt(turn: TurnContext) -> str:
 
         if turn.child_intent == ChildIntent.SILENCE:
             parts.append(
-                f"The child didn't say anything. That's okay! "
-                f'Gently encourage them: "Don\'t worry, let\'s try together!" '
-                f'Then repeat the question about "{turn.retry_word}" in a simpler way.'
+                f"The child was quiet. Gently encourage them — maybe they're thinking! "
+                f'Say something like: "It\'s okay! I\'ll give you a clue..." '
+                f'Then rephrase the question about "{turn.retry_word}" in an easier way.'
             )
             if exercise:
                 parts.append(f"The question is: {exercise.prompt_hint}")
 
         elif turn.child_intent == ChildIntent.OFF_TOPIC:
             parts.append(
-                f"The child said something unrelated to the lesson. "
-                f"Briefly react to what they said (show you care!), "
-                f'then playfully bring them back: "That\'s cool! But guess what — '
-                f'I have a fun question about {turn.retry_word}!"'
+                f"The child said something unrelated. React to it warmly — show you care! "
+                f'Then playfully bring them back to the question about "{turn.retry_word}".'
             )
             if exercise:
                 parts.append(f"The question is: {exercise.prompt_hint}")
@@ -128,7 +139,7 @@ def build_turn_prompt(turn: TurnContext) -> str:
         elif turn.child_intent == ChildIntent.PARTIAL_ANSWER:
             parts.append(
                 f'The child\'s answer for "{turn.retry_word}" is almost right! '
-                f'Encourage them: "Ooh, so close!" and give a small hint.'
+                f'Encourage them: "Ooh, so close! You almost got it!" and give a small hint.'
             )
             if exercise:
                 parts.append(f"Hint them toward: {exercise.prompt_hint}")
@@ -137,7 +148,8 @@ def build_turn_prompt(turn: TurnContext) -> str:
         else:  # WRONG_ANSWER
             parts.append(
                 f'The child\'s answer for "{turn.retry_word}" wasn\'t right. '
-                f"Don't say \"wrong\" — say something like \"Hmm, not quite!\" and give a small clue."
+                f"Don't say \"wrong\" — say something like \"Hmm, not quite! Let me help!\" "
+                f"and give a fun clue."
             )
             if exercise:
                 parts.append(f"Guide them toward: {exercise.prompt_hint}")
@@ -149,26 +161,28 @@ def build_turn_prompt(turn: TurnContext) -> str:
     if turn.introduce_word:
         parts.append(
             f'Introduce the word "{turn.introduce_word}" to the child. '
-            f"Explain it with something they can imagine — an animal they might have seen, "
-            f"a sound it makes, what it looks like, or where it lives. "
-            f"Make it vivid and fun in one sentence."
+            f"Tell a mini-story: where you (Charlie) saw this thing, what it looked like, "
+            f"what sound it makes, or what it did. Make the child curious! "
+            f"End with a simple yes/no question so the child knows to respond "
+            f'(e.g., "Have you ever seen a {turn.introduce_word}?" or '
+            f'"Do you like {turn.introduce_word}s?").'
         )
 
     # --- Repeat word (pronunciation practice) ---
     if turn.repeat_word:
         parts.append(
-            f'Ask the child to say the word "{turn.repeat_word}" out loud. '
-            f'Make it fun — like a game: "Can you say {turn.repeat_word}? '
-            f'Let me hear you!" or "Your turn — say {turn.repeat_word}!"'
+            f"Now it's pronunciation time! Ask the child to say \"{turn.repeat_word}\" out loud. "
+            f"Make it a fun game — say the word first, then ask them to copy you. "
+            f'Example: "Listen: {turn.repeat_word.upper()}! Now you try — say {turn.repeat_word.upper()}!"'
         )
 
     # --- Ask new exercise ---
     if turn.exercise_word and turn.exercise:
         parts.append(
-            f'Praise the child for saying the word (even if they didn\'t get it perfectly). '
-            f'Then ask a question about "{turn.exercise_word}": '
+            f"The child tried to say the word — praise their effort no matter what! "
+            f'Then ask a fun question about "{turn.exercise_word}": '
             f"{turn.exercise.prompt_hint}. "
-            f"Ask it in a playful way, like a fun challenge between friends."
+            f"Frame it as a fun challenge, not a test."
         )
 
     # --- Review (end-of-lesson recap) ---

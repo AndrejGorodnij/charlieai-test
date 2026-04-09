@@ -299,3 +299,50 @@ curl http://localhost:8000/lesson/SESSION_ID/status
 | Validation | Pydantic v2 |
 | Testing | pytest + pytest-asyncio |
 | Python | 3.11+ |
+
+---
+
+## Changelog
+
+### v3 — Контекстні промпти та природний діалог
+
+**Проблема:** Charlie ігнорував що дитина сказала — не реагував на українську, мовчання, або відповіді на попередньому кроці. Діалоги були сухі і механічні.
+
+**Рішення:**
+- `child_text` передається в `TurnContext` на **кожному** етапі (greeting, introduce, repeat) — раніше передавався тільки в exercise
+- Кожен промпт починається з інструкції **завжди реагувати** на слова дитини перед переходом до наступного кроку
+- Мовчання дитини обробляється явно: "They might be shy! Gently encourage them"
+- Introduce word побудований як міні-історія ("Guess what I found near my treehouse?"), а не сухий факт
+- Repeat word оформлений як гра-повторення ("Listen: FROG! Now you try!")
+- Introduce завжди завершується простим so/no питанням, щоб дитина розуміла що від неї чекають відповідь
+
+### v2 — REPEAT_WORD, REVIEW та розширена FSM
+
+**Проблема:** FSM була занадто лінійною — одна вправа на слово і все. Не відображала реальну методику навчання.
+
+**Рішення:**
+- Додано `REPEAT_WORD` — етап вимови після знайомства зі словом. Плейсхолдер для STT pronunciation scoring. Завжди lenient — приймає будь-яку спробу
+- Додано `REVIEW` — повтор всіх вивчених слів перед прощанням. Педагогічне закріплення (spaced repetition)
+- Flow: `GREETING → INTRODUCE → REPEAT → EXERCISE → FEEDBACK → ... → REVIEW → FAREWELL`
+- Engine переведений на dispatch table замість if/elif chain
+
+### v1 — Turn-based architecture та Protocol DI
+
+**Проблема:** Кілька незалежних LLM-викликів склеювались в одне повідомлення ("Yay! Next word: cat! Where does fish live?"). Тести вимагали хаків з наслідуванням.
+
+**Рішення:**
+- `TurnContext` — value object, що описує повний контекст ходу. Engine будує його **після** всіх state-переходів
+- Один виклик LLM на повідомлення → одна зв'язна відповідь
+- `evaluate_intent()` — окремий виклик тільки для класифікації (correct/wrong/off_topic/silence)
+- `LLMServiceProtocol` / `SessionStoreProtocol` — Protocol (PEP 544), тести без хаків
+- FastAPI `Depends()` замість глобальних змінних
+- Constructor injection в `LLMService(client=..., model=...)`
+
+### v0 — Initial implementation
+
+- Детермінована FSM керує flow уроку
+- LLM генерує тільки текст, не приймає рішень щодо flow
+- Groq API з `response_format: json_object`
+- System prompt з персонажем Charlie
+- Обробка silence, off-topic, wrong answer, max attempts
+- FastAPI + CLI + Docker + 31 тест

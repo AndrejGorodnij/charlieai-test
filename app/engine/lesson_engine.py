@@ -82,6 +82,7 @@ class LessonEngine:
         state = self._sm.transition(state, ChildIntent.CHILD_REPLIED)
 
         turn = TurnContext(
+            child_text=child_text,
             is_greeting_reply=True,
             child_name=state.child_name,
             introduce_word=state.current_word,
@@ -95,7 +96,7 @@ class LessonEngine:
         word = state.current_word
         state = self._sm.transition(state, ChildIntent.CHILD_REPLIED)
 
-        turn = TurnContext(repeat_word=word)
+        turn = TurnContext(child_text=child_text, repeat_word=word)
         return turn, state
 
     async def _handle_repeat_word(
